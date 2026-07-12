@@ -8,7 +8,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const store = new RoomStore(config.sessionTtlSeconds);
   const relay = new RelayServer();
-  const hub = new SignalingHub(store);
+  const hub = new SignalingHub(store, relay);
 
   const app = buildHttpServer({ config, store, relay, hub });
   await app.listen({ port: config.port, host: "0.0.0.0" });

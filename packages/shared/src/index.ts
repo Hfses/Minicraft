@@ -102,17 +102,31 @@ export interface ListRoomsResponse {
 
 // ---- WebSocket signaling ----
 
+/** Public identity of a peer in a room (safe to show/act on; not a secret token). */
+export interface PeerInfo {
+  peerId: string;
+  name: string;
+  role: PeerRole;
+}
+
+/** Stable public id used for the host in rosters and events. */
+export const HOST_PEER_ID = "host";
+
 export type SignalClientMessage =
   | { type: "hello"; token: string; role: PeerRole; roomId: string }
+  | { type: "chat"; text: string }
+  | { type: "kick"; peerId: string }
   | { type: "ping" }
   | { type: "leave" };
 
 export type SignalServerMessage =
-  | { type: "welcome"; room: RoomSummary; role: PeerRole }
+  | { type: "welcome"; room: RoomSummary; role: PeerRole; peerId: string; peers: PeerInfo[] }
   | { type: "room-update"; room: RoomSummary }
-  | { type: "peer-joined"; name: string; role: PeerRole }
-  | { type: "peer-left"; name: string; role: PeerRole }
+  | { type: "peer-joined"; peer: PeerInfo }
+  | { type: "peer-left"; peer: PeerInfo }
+  | { type: "chat"; from: string; peerId: string; text: string; ts: number }
   | { type: "relay-ready"; relay: RelayEndpoint }
+  | { type: "kicked" }
   | { type: "host-left" }
   | { type: "pong" }
   | { type: "error"; message: string };

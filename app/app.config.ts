@@ -28,6 +28,8 @@ const config: ExpoConfig = {
       NSLocalNetworkUsageDescription:
         "O CraftTogether usa a rede local para descobrir e conectar mundos do Minecraft entre amigos.",
       NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
+      // Allow opening the Minecraft app via its URL scheme.
+      LSApplicationQueriesSchemes: ["minecraft"],
     },
   },
   android: {

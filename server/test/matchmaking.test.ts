@@ -20,7 +20,7 @@ describe("matchmaking HTTP API", () => {
     const config = loadConfig();
     const store = new RoomStore(config.sessionTtlSeconds);
     relay = new RelayServer();
-    const hub = new SignalingHub(store);
+    const hub = new SignalingHub(store, relay);
     app = buildHttpServer({ config, store, relay, hub });
     await app.ready();
   });

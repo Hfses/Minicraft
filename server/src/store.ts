@@ -18,6 +18,8 @@ export interface GuestSession {
   guestRelayToken: string;
   /** The host-side relay token paired with this guest. */
   hostSideRelayToken: string;
+  /** Public, non-secret id used in rosters and for kicking. */
+  publicId: string;
   name: string;
   joinedAt: number;
   lastSeen: number;
@@ -112,6 +114,7 @@ export class RoomStore {
       guestToken: newToken(),
       guestRelayToken: newToken(),
       hostSideRelayToken: newToken(),
+      publicId: randomBytes(4).toString("hex"),
       name,
       joinedAt: now,
       lastSeen: now,

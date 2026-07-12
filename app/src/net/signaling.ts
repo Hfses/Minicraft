@@ -56,6 +56,14 @@ export class SignalingClient {
     }
   }
 
+  sendChat(text: string): void {
+    this.send({ type: "chat", text });
+  }
+
+  kick(peerId: string): void {
+    this.send({ type: "kick", peerId });
+  }
+
   on(listener: Listener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
