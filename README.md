@@ -31,7 +31,7 @@ cuida da **conexão** entre os aparelhos, usando recursos que o jogo já oferece
 
 - **Mesma Wi-Fi:** o mundo do host aparece direto na aba **Amigos** do Minecraft
   (descoberta LAN nativa). O app só ajuda a achar/organizar.
-- **Redes diferentes:** o app cria uma **ponte** via um **relay UDP** na nuvem. O
+- **Redes diferentes:** o app cria uma **ponte** via um **relay WebSocket** na nuvem. O
   convidado adiciona um servidor apontando para o **proxy local** do app; os pacotes
   do jogo viajam pelo relay até o mundo do host. O relay **não lê nem altera** nada
   do jogo — só repassa bytes.
@@ -46,7 +46,7 @@ crafttogether/
 ├── server/           # Backend TypeScript
 │   ├── src/http.ts       # REST: criar/listar/entrar salas, sair (Fastify)
 │   ├── src/signaling.ts  # WebSocket de sinalização (estado da sala, relay-ready)
-│   ├── src/relay.ts      # relay UDP (dgram) — encaminha pacotes por token
+│   ├── src/relay.ts      # relay WebSocket — encaminha pacotes por token de sessão
 │   ├── src/store.ts      # registro de salas em memória
 │   └── test/             # testes (relay ponta a ponta + matchmaking)
 └── packages/shared/  # tipos + protocolo compartilhados (código de sala, frames do relay)
@@ -62,7 +62,7 @@ Dev Client ou uma build.
 ```bash
 pnpm install
 
-# 1) Backend (matchmaking + sinalização + relay UDP)
+# 1) Backend (matchmaking + sinalização + relay WebSocket)
 cp .env.example .env
 pnpm server:dev            # http://localhost:8080, ws://localhost:8080/ws, relay udp:19133
 
@@ -78,11 +78,11 @@ pnpm --filter @crafttogether/app android       # ou: ios
 ```bash
 pnpm -r typecheck   # tipos de app, server e shared
 pnpm -r lint
-pnpm -r test        # relay UDP ponta a ponta + API de matchmaking
+pnpm -r test        # relay WebSocket ponta a ponta + API de matchmaking
 ```
 
 O teste do relay (`server/test/relay.test.ts`) sobe o relay de verdade e usa dois
-sockets UDP simulando os proxies do host e do convidado, provando que os pacotes
+clientes WebSocket simulando os proxies do host e do convidado, provando que os pacotes
 atravessam a ponte nas **duas direções**.
 
 ## Protocolo de teste manual (2 aparelhos + Minecraft Bedrock)
@@ -113,19 +113,24 @@ tela da sala? endereço/porta digitados exatamente? a rede não bloqueia UDP
 > nativa do jogo. O `UdpProxy`/relay já são desenhados com interface trocável para
 > isso.
 
-## Deploy do backend
+## Deploy do backend (grátis)
 
-Há um `server/Dockerfile`. Exponha a porta **TCP 8080** (HTTP+WS) e a porta **UDP**
-do relay (`RELAY_PORT`, padrão 19133). Defina `PUBLIC_HOST` com o IP/domínio público.
+O relay trafega por **WebSocket (TCP)**, então o backend usa **uma única porta HTTP**
+(sem UDP e sem IP dedicado) e roda em qualquer plano gratuito.
 
+**Fly.io (recomendado):** já há `fly.toml` e `.github/workflows/deploy-backend.yml`.
+1. Crie uma conta grátis em fly.io e gere um token em *Account → Access Tokens*.
+2. No GitHub, adicione o token como secret **`FLY_API_TOKEN`** (Settings → Secrets → Actions).
+3. Rode o workflow **"Deploy backend (Fly.io)"** na aba Actions. Ele cria o app e faz o deploy.
+
+O app fica em `https://<app>.fly.dev` (WS/WSS na mesma URL). Aponte o build do APK
+para essa URL (campo `api_url` do workflow "Android APK").
+
+Localmente com Docker:
 ```bash
 docker build -f server/Dockerfile -t crafttogether-server .
-docker run -p 8080:8080 -p 19133:19133/udp \
-  -e PUBLIC_HOST=SEU_IP_PUBLICO crafttogether-server
+docker run -p 8080:8080 crafttogether-server
 ```
-
-Plataformas como **Fly.io** e **Railway** funcionam bem (garanta suporte a UDP para
-o relay). Variáveis: veja `.env.example`.
 
 ## Builds do app (EAS)
 

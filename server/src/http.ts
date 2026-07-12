@@ -29,16 +29,12 @@ export function buildHttpServer(deps: {
   relay: RelayServer;
   hub: SignalingHub;
 }): FastifyInstance {
-  const { config, store, relay, hub } = deps;
+  const { store, relay, hub } = deps;
   const app = Fastify({ logger: false });
 
   app.register(cors, { origin: true });
 
-  const relayEndpoint = (token: string): RelayEndpoint => ({
-    host: config.publicHost,
-    port: config.relayPort,
-    token,
-  });
+  const relayEndpoint = (token: string): RelayEndpoint => ({ token });
 
   app.get("/health", async () => ({ ok: true, rooms: store.listPublicRooms().length }));
 

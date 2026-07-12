@@ -1,105 +1,93 @@
 import { afterEach, describe, expect, it } from "vitest";
-import dgram from "node:dgram";
-import { encodeRelayRegister } from "@crafttogether/shared";
+import http from "node:http";
+import { AddressInfo } from "node:net";
+import { WebSocket } from "ws";
 import { RelayServer } from "../src/relay.js";
 
 /**
- * Proves that opaque datagrams cross the relay end-to-end in both directions,
- * simulating the host-side and guest-side on-device proxies. No Minecraft
- * needed: two UDP sockets stand in for the two proxies.
+ * Proves opaque binary messages cross the WebSocket relay end-to-end in both
+ * directions, simulating the host-side and guest-side on-device proxies. No
+ * Minecraft needed: two WebSocket clients stand in for the two proxies.
  */
 
-function once(socket: dgram.Socket, event: "message"): Promise<Buffer> {
-  return new Promise((resolve) => socket.once(event, (msg: Buffer) => resolve(msg)));
+function waitOpen(ws: WebSocket): Promise<void> {
+  return new Promise((resolve) => ws.on("open", () => resolve()));
+}
+function onceMessage(ws: WebSocket): Promise<Buffer> {
+  return new Promise((resolve) => ws.once("message", (d: Buffer) => resolve(d)));
 }
 
-function bind(socket: dgram.Socket): Promise<void> {
-  return new Promise((resolve) => socket.bind(0, "127.0.0.1", () => resolve()));
-}
-
-describe("RelayServer", () => {
+describe("RelayServer (WebSocket)", () => {
+  let server: http.Server;
   let relay: RelayServer;
-  const sockets: dgram.Socket[] = [];
+  const clients: WebSocket[] = [];
+
+  async function start(): Promise<number> {
+    relay = new RelayServer();
+    server = http.createServer();
+    server.on("upgrade", (req, socket, head) => {
+      if (new URL(req.url ?? "", "http://x").pathname === "/relay") {
+        relay.handleUpgrade(req, socket, head);
+      } else socket.destroy();
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    return (server.address() as AddressInfo).port;
+  }
 
   afterEach(async () => {
-    for (const s of sockets.splice(0)) s.close();
-    if (relay) await relay.close();
+    for (const c of clients.splice(0)) c.close();
+    relay?.close();
+    await new Promise<void>((r) => server?.close(() => r()));
   });
 
-  it("forwards datagrams between two paired peers in both directions", async () => {
-    relay = new RelayServer();
-    const relayPort = await relay.start(0, "127.0.0.1");
+  it("forwards messages between two paired peers in both directions", async () => {
+    const port = await start();
+    relay.registerPair("guest-tok", "host-tok");
 
-    const guestToken = "guest-token-abc";
-    const hostToken = "host-token-xyz";
-    relay.registerPair(guestToken, hostToken);
+    const guest = new WebSocket(`ws://127.0.0.1:${port}/relay?token=guest-tok`);
+    const host = new WebSocket(`ws://127.0.0.1:${port}/relay?token=host-tok`);
+    clients.push(guest, host);
+    await Promise.all([waitOpen(guest), waitOpen(host)]);
 
-    const guest = dgram.createSocket("udp4");
-    const host = dgram.createSocket("udp4");
-    sockets.push(guest, host);
-    await bind(guest);
-    await bind(host);
-
-    // Both proxies register with the relay.
-    guest.send(Buffer.from(encodeRelayRegister(guestToken)), relayPort, "127.0.0.1");
-    host.send(Buffer.from(encodeRelayRegister(hostToken)), relayPort, "127.0.0.1");
-
-    // Give the relay a tick to record both source addresses.
-    await new Promise((r) => setTimeout(r, 50));
-    expect(relay.addressFor(guestToken)).toBeDefined();
-    expect(relay.addressFor(hostToken)).toBeDefined();
-
-    // Guest -> Host (as if Minecraft on the guest sent a RakNet packet).
-    const hostRecv = once(host, "message");
-    guest.send(Buffer.from("HELLO_FROM_GUEST"), relayPort, "127.0.0.1");
+    const hostRecv = onceMessage(host);
+    guest.send(Buffer.from("HELLO_FROM_GUEST"));
     expect((await hostRecv).toString()).toBe("HELLO_FROM_GUEST");
 
-    // Host -> Guest (the world's reply).
-    const guestRecv = once(guest, "message");
-    host.send(Buffer.from("WELCOME_FROM_HOST"), relayPort, "127.0.0.1");
+    const guestRecv = onceMessage(guest);
+    host.send(Buffer.from("WELCOME_FROM_HOST"));
     expect((await guestRecv).toString()).toBe("WELCOME_FROM_HOST");
   });
 
-  it("drops datagrams from unregistered sources", async () => {
-    relay = new RelayServer();
-    const relayPort = await relay.start(0, "127.0.0.1");
-
-    const stranger = dgram.createSocket("udp4");
-    sockets.push(stranger);
-    await bind(stranger);
-
-    let forwarded = false;
-    relay.onForward = () => {
-      forwarded = true;
-    };
-    stranger.send(Buffer.from("noise"), relayPort, "127.0.0.1");
-    await new Promise((r) => setTimeout(r, 50));
-    expect(forwarded).toBe(false);
+  it("rejects a connection with an unknown token", async () => {
+    const port = await start();
+    const stranger = new WebSocket(`ws://127.0.0.1:${port}/relay?token=nope`);
+    clients.push(stranger);
+    const rejected = await new Promise<boolean>((resolve) => {
+      // Destroying the socket surfaces as either 'error' (ECONNRESET) or 'close'.
+      stranger.on("error", () => resolve(true));
+      stranger.on("close", () => resolve(true));
+      stranger.on("open", () => resolve(false));
+    });
+    expect(rejected).toBe(true);
   });
 
   it("stops forwarding after a token is unregistered", async () => {
-    relay = new RelayServer();
-    const relayPort = await relay.start(0, "127.0.0.1");
+    const port = await start();
     relay.registerPair("a", "b");
-
-    const peerA = dgram.createSocket("udp4");
-    const peerB = dgram.createSocket("udp4");
-    sockets.push(peerA, peerB);
-    await bind(peerA);
-    await bind(peerB);
-
-    peerA.send(Buffer.from(encodeRelayRegister("a")), relayPort, "127.0.0.1");
-    peerB.send(Buffer.from(encodeRelayRegister("b")), relayPort, "127.0.0.1");
-    await new Promise((r) => setTimeout(r, 50));
-
-    relay.unregisterToken("a");
+    const a = new WebSocket(`ws://127.0.0.1:${port}/relay?token=a`);
+    const b = new WebSocket(`ws://127.0.0.1:${port}/relay?token=b`);
+    clients.push(a, b);
+    await Promise.all([waitOpen(a), waitOpen(b)]);
 
     let forwarded = false;
     relay.onForward = () => {
       forwarded = true;
     };
-    peerA.send(Buffer.from("after-unregister"), relayPort, "127.0.0.1");
-    await new Promise((r) => setTimeout(r, 50));
+    relay.unregisterToken("a");
+    await new Promise((r) => setTimeout(r, 30));
+    // b's socket was closed by unregister; sending from a (also closed) forwards nothing.
+    if (a.readyState === a.OPEN) a.send(Buffer.from("after"));
+    await new Promise((r) => setTimeout(r, 30));
     expect(forwarded).toBe(false);
   });
 });

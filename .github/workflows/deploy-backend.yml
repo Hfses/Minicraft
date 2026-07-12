@@ -1,0 +1,25 @@
+name: Deploy backend (Fly.io)
+
+# Deploys the CraftTogether backend to Fly.io. Requires a repository secret
+# FLY_API_TOKEN (Fly.io -> Account -> Access Tokens). Run it from the Actions tab.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Create app if it does not exist
+        run: flyctl apps create crafttogether-hfses --org personal || true
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

@@ -1,103 +1,82 @@
-import dgram from "node:dgram";
-import { tryParseRelayRegister } from "@crafttogether/shared";
+import type { IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
+import { WebSocketServer, type WebSocket } from "ws";
 
 interface PeerState {
-  /** The token this peer is paired with; datagrams are forwarded there. */
+  /** Token this peer is paired with; messages are forwarded there. */
   peerToken: string;
-  /** Last known UDP address of this peer, learned from its registration frame. */
-  addr?: { address: string; port: number };
-  lastSeen: number;
+  socket?: WebSocket;
 }
 
 /**
- * A transport-level UDP relay. It knows nothing about Minecraft or RakNet: it
- * forwards opaque datagrams between exactly two paired tokens.
+ * WebSocket relay. It knows nothing about Minecraft or RakNet: it pipes opaque
+ * binary messages between exactly two paired tokens. Using WebSocket (TCP) means
+ * the backend needs no UDP or dedicated public IP, so it hosts on any free tier
+ * and traverses restrictive NATs/firewalls that block UDP.
  *
- * Handshake: a proxy first sends a registration frame (see
- * `encodeRelayRegister` in @crafttogether/shared) carrying its token. The relay
- * records the source address for that token. Every later datagram from that
- * address is forwarded verbatim to the paired token's last known address.
+ * A proxy connects to `/relay?token=<token>`; once both paired proxies are
+ * connected, every binary message from one is forwarded verbatim to the other.
  */
 export class RelayServer {
-  private socket = dgram.createSocket("udp4");
+  private wss = new WebSocketServer({ noServer: true });
   private peers = new Map<string, PeerState>();
-  private started = false;
 
   onForward?: (fromToken: string, bytes: number) => void;
 
   registerPair(tokenA: string, tokenB: string): void {
-    const now = Date.now();
-    this.peers.set(tokenA, { peerToken: tokenB, lastSeen: now });
-    this.peers.set(tokenB, { peerToken: tokenA, lastSeen: now });
+    this.peers.set(tokenA, { peerToken: tokenB });
+    this.peers.set(tokenB, { peerToken: tokenA });
   }
 
   unregisterToken(token: string): void {
     const peer = this.peers.get(token);
+    peer?.socket?.close();
     this.peers.delete(token);
-    if (peer) this.peers.delete(peer.peerToken);
+    if (peer) {
+      const other = this.peers.get(peer.peerToken);
+      other?.socket?.close();
+      this.peers.delete(peer.peerToken);
+    }
   }
 
   hasToken(token: string): boolean {
     return this.peers.has(token);
   }
 
-  /** Address a registered token was last seen at (used by tests). */
-  addressFor(token: string): { address: string; port: number } | undefined {
-    return this.peers.get(token)?.addr;
-  }
-
-  start(port: number, host = "0.0.0.0"): Promise<number> {
-    return new Promise((resolve, reject) => {
-      this.socket.on("error", (err) => {
-        if (!this.started) reject(err);
-        else console.error("[relay] socket error", err);
-      });
-      this.socket.on("message", (msg, rinfo) => this.handleMessage(msg, rinfo));
-      this.socket.bind(port, host, () => {
-        this.started = true;
-        const address = this.socket.address();
-        const boundPort = typeof address === "object" ? address.port : port;
-        console.log(`[relay] listening udp://${host}:${boundPort}`);
-        resolve(boundPort);
-      });
-    });
-  }
-
-  private handleMessage(msg: Buffer, rinfo: dgram.RemoteInfo): void {
-    const maybeToken = tryParseRelayRegister(new Uint8Array(msg));
-    if (maybeToken !== null) {
-      const peer = this.peers.get(maybeToken);
-      if (!peer) return; // unknown/expired token — ignore
-      peer.addr = { address: rinfo.address, port: rinfo.port };
-      peer.lastSeen = Date.now();
+  handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const token = new URL(request.url ?? "", "http://localhost").searchParams.get("token");
+    if (!token || !this.peers.has(token)) {
+      socket.destroy();
       return;
     }
-
-    // Data datagram: find which token owns this source address, forward to peer.
-    const from = this.tokenForAddress(rinfo.address, rinfo.port);
-    if (!from) return; // source hasn't registered yet
-    const peer = this.peers.get(from);
-    if (!peer) return;
-    peer.lastSeen = Date.now();
-    const dest = this.peers.get(peer.peerToken);
-    if (!dest?.addr) return; // paired peer not connected yet
-    this.socket.send(msg, dest.addr.port, dest.addr.address);
-    this.onForward?.(from, msg.length);
+    this.wss.handleUpgrade(request, socket, head, (ws) => this.onConnection(ws, token));
   }
 
-  private tokenForAddress(address: string, port: number): string | undefined {
-    for (const [token, peer] of this.peers) {
-      if (peer.addr && peer.addr.address === address && peer.addr.port === port) {
-        return token;
-      }
+  private onConnection(ws: WebSocket, token: string): void {
+    const peer = this.peers.get(token);
+    if (!peer) {
+      ws.close();
+      return;
     }
-    return undefined;
+    peer.socket = ws;
+    ws.binaryType = "nodebuffer";
+
+    ws.on("message", (data: Buffer, isBinary: boolean) => {
+      const dest = this.peers.get(peer.peerToken);
+      if (dest?.socket && dest.socket.readyState === dest.socket.OPEN) {
+        dest.socket.send(data, { binary: isBinary });
+        this.onForward?.(token, (data as Buffer).length);
+      }
+    });
+    ws.on("close", () => {
+      if (peer.socket === ws) peer.socket = undefined;
+    });
+    ws.on("error", () => ws.close());
   }
 
-  close(): Promise<void> {
-    return new Promise((resolve) => {
-      this.peers.clear();
-      this.socket.close(() => resolve());
-    });
+  close(): void {
+    for (const peer of this.peers.values()) peer.socket?.close();
+    this.peers.clear();
+    this.wss.close();
   }
 }

@@ -1,4 +1,5 @@
-import type { Server as HttpServer } from "node:http";
+import type { IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
   type PeerRole,
@@ -30,15 +31,9 @@ export class SignalingHub {
     this.wss = new WebSocketServer({ noServer: true });
   }
 
-  attach(server: HttpServer): void {
-    server.on("upgrade", (request, socket, head) => {
-      if (!request.url || !request.url.startsWith("/ws")) {
-        socket.destroy();
-        return;
-      }
-      this.wss.handleUpgrade(request, socket, head, (ws) => {
-        this.handleConnection(ws);
-      });
+  handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+    this.wss.handleUpgrade(request, socket, head, (ws) => {
+      this.handleConnection(ws);
     });
   }
 

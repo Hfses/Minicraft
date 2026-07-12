@@ -1,0 +1,23 @@
+# Fly.io deploy config for the CraftTogether backend.
+# Free-tier friendly: a single small machine that sleeps when idle and wakes on
+# the first request. Serves REST + WebSocket signaling (/ws) + WebSocket relay
+# (/relay) over one HTTPS port — no UDP or dedicated IP needed.
+app = "crafttogether-hfses"
+primary_region = "gru" # São Paulo
+
+[build]
+  dockerfile = "server/Dockerfile"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

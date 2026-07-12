@@ -1,7 +1,5 @@
 export interface AppConfig {
   port: number;
-  relayPort: number;
-  publicHost: string;
   sessionTtlSeconds: number;
 }
 
@@ -14,9 +12,8 @@ function intFromEnv(name: string, fallback: number): number {
 
 export function loadConfig(): AppConfig {
   return {
+    // Single port serves REST, signaling (/ws) and the relay (/relay).
     port: intFromEnv("PORT", 8080),
-    relayPort: intFromEnv("RELAY_PORT", 19133),
-    publicHost: process.env.PUBLIC_HOST ?? "127.0.0.1",
     sessionTtlSeconds: intFromEnv("SESSION_TTL_SECONDS", 180),
   };
 }

@@ -10,29 +10,29 @@ async function main(): Promise<void> {
   const relay = new RelayServer();
   const hub = new SignalingHub(store);
 
-  await relay.start(config.relayPort);
-
   const app = buildHttpServer({ config, store, relay, hub });
   await app.listen({ port: config.port, host: "0.0.0.0" });
-  hub.attach(app.server);
 
-  console.log(`[http] listening on http://0.0.0.0:${config.port}`);
-  console.log(`[ws]   signaling on ws://0.0.0.0:${config.port}/ws`);
-  console.log(`[relay] public endpoint ${config.publicHost}:${config.relayPort}`);
+  // Route WebSocket upgrades: /ws -> signaling, /relay -> relay.
+  app.server.on("upgrade", (request, socket, head) => {
+    const pathname = new URL(request.url ?? "", "http://localhost").pathname;
+    if (pathname === "/ws") hub.handleUpgrade(request, socket, head);
+    else if (pathname === "/relay") relay.handleUpgrade(request, socket, head);
+    else socket.destroy();
+  });
 
-  // Garbage-collect idle rooms.
+  console.log(`[http] REST + ws://.../ws + ws://.../relay on :${config.port}`);
+
   const sweepTimer = setInterval(() => {
     const closed = store.sweepExpired();
-    for (const room of closed) {
-      hub.notifyHostLeft(room);
-    }
+    for (const room of closed) hub.notifyHostLeft(room);
   }, 30_000);
   sweepTimer.unref();
 
   const shutdown = async () => {
     clearInterval(sweepTimer);
     hub.close();
-    await relay.close();
+    relay.close();
     await app.close();
     process.exit(0);
   };

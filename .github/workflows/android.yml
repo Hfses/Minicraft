@@ -6,7 +6,7 @@ on:
       api_url:
         description: "Backend URL baked into the app (EXPO_PUBLIC_API_URL)"
         required: false
-        default: "http://10.0.2.2:8080"
+        default: "https://crafttogether-hfses.fly.dev"
   push:
     tags:
       - "v*"
@@ -18,7 +18,7 @@ jobs:
   build-apk:
     runs-on: ubuntu-latest
     env:
-      EXPO_PUBLIC_API_URL: ${{ github.event.inputs.api_url || 'http://10.0.2.2:8080' }}
+      EXPO_PUBLIC_API_URL: ${{ github.event.inputs.api_url || 'https://crafttogether-hfses.fly.dev' }}
     steps:
       - uses: actions/checkout@v4
 

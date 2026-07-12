@@ -1,22 +1,22 @@
 import dgram from "react-native-udp";
-import {
-  BEDROCK_DEFAULT_PORT,
-  encodeRelayRegister,
-  type RelayEndpoint,
-} from "@crafttogether/shared";
+import { BEDROCK_DEFAULT_PORT, type RelayEndpoint } from "@crafttogether/shared";
+import { RELAY_WS_URL } from "@/config";
 
 /**
- * On-device UDP bridge between the local Minecraft game and the cloud relay.
- * It forwards opaque RakNet datagrams verbatim — it never inspects or changes
- * game content.
+ * On-device bridge between the local Minecraft game (UDP/RakNet) and the cloud
+ * relay (WebSocket). It forwards opaque datagrams verbatim — it never inspects
+ * or changes game content.
  *
- * Two modes:
+ * Local side stays UDP (that's how Minecraft talks); the relay side is a
+ * WebSocket so the backend needs no UDP/public IP and hosts on any free tier.
+ *
+ * Modes:
  *  - "guest": binds a local port. The player adds `127.0.0.1:<localPort>` in the
  *    Minecraft "Servers" tab; packets from the game are tunneled to the relay,
  *    and the host's replies are delivered back to the game.
- *  - "host": connects to the host's own LAN world (127.0.0.1:19132). Packets
- *    arriving from the relay (sent by a guest) are delivered to the game, and
- *    the world's replies are tunneled back.
+ *  - "host": talks to the host's own LAN world (127.0.0.1:19132). Messages from
+ *    the relay (sent by a guest) are delivered to the game, and the world's
+ *    replies are tunneled back.
  */
 
 export type ProxyMode =
@@ -30,7 +30,6 @@ export interface ProxyStatus {
   lastError?: string;
 }
 
-// Minimal shape of a react-native-udp socket (avoids over-coupling to versions).
 interface UdpSocket {
   bind(port: number, address?: string, callback?: () => void): void;
   on(event: "message", cb: (msg: Buffer, rinfo: { address: string; port: number }) => void): void;
@@ -46,12 +45,9 @@ interface UdpSocket {
   close(cb?: () => void): void;
 }
 
-const KEEPALIVE_MS = 15_000;
-
 export class UdpProxy {
-  private relaySocket: UdpSocket | null = null;
+  private ws: WebSocket | null = null;
   private localSocket: UdpSocket | null = null;
-  private keepalive: ReturnType<typeof setInterval> | null = null;
   private lastGameAddr: { address: string; port: number } | null = null;
   private status: ProxyStatus = { running: false, bytesUp: 0, bytesDown: 0 };
 
@@ -66,8 +62,9 @@ export class UdpProxy {
     this.onStatus?.({ ...this.status });
   }
 
-  private send(sock: UdpSocket, data: Uint8Array, port: number, address: string): void {
-    sock.send(data, 0, data.length, port, address, (err) => {
+  private sendToGame(data: Uint8Array): void {
+    if (!this.localSocket || !this.lastGameAddr) return;
+    this.localSocket.send(data, 0, data.length, this.lastGameAddr.port, this.lastGameAddr.address, (err) => {
       if (err) {
         this.status.lastError = err.message;
         this.emit();
@@ -75,56 +72,21 @@ export class UdpProxy {
     });
   }
 
-  async start(): Promise<void> {
-    const relaySocket = dgram.createSocket({ type: "udp4" }) as unknown as UdpSocket;
-    this.relaySocket = relaySocket;
-
-    relaySocket.on("error", (err) => {
-      this.status.lastError = err.message;
+  private tunnelToRelay(msg: Uint8Array): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      // Copy into a standalone ArrayBuffer so RN sends exactly these bytes.
+      const copy = new Uint8Array(msg.length);
+      copy.set(msg);
+      this.ws.send(copy.buffer);
+      this.status.bytesUp += msg.length;
       this.emit();
-    });
-
-    // Relay -> local game
-    relaySocket.on("message", (msg) => {
-      this.status.bytesDown += msg.length;
-      this.deliverToGame(msg);
-      this.emit();
-    });
-
-    await new Promise<void>((resolve) => relaySocket.bind(0, "0.0.0.0", () => resolve()));
-
-    // Register with the relay and keep the mapping warm.
-    this.registerWithRelay();
-    this.keepalive = setInterval(() => this.registerWithRelay(), KEEPALIVE_MS);
-
-    if (this.config.mode === "guest") {
-      await this.startGuestListener(this.config.localPort);
-    } else {
-      // Host mode: prepare a socket to talk to the local Minecraft LAN world.
-      const gameSocket = dgram.createSocket({ type: "udp4" }) as unknown as UdpSocket;
-      this.localSocket = gameSocket;
-      this.lastGameAddr = {
-        address: this.config.gameHost ?? "127.0.0.1",
-        port: this.config.gamePort ?? BEDROCK_DEFAULT_PORT,
-      };
-      gameSocket.on("error", (err) => {
-        this.status.lastError = err.message;
-        this.emit();
-      });
-      gameSocket.on("message", (msg) => {
-        // Reply from the host's world -> tunnel to the relay -> guest.
-        this.status.bytesUp += msg.length;
-        this.tunnelToRelay(msg);
-        this.emit();
-      });
-      await new Promise<void>((resolve) => gameSocket.bind(0, "0.0.0.0", () => resolve()));
     }
-
-    this.status.running = true;
-    this.emit();
   }
 
-  private async startGuestListener(localPort: number): Promise<void> {
+  async start(): Promise<void> {
+    const cfg = this.config;
+
+    // Local UDP side.
     const localSocket = dgram.createSocket({ type: "udp4" }) as unknown as UdpSocket;
     this.localSocket = localSocket;
     localSocket.on("error", (err) => {
@@ -132,29 +94,47 @@ export class UdpProxy {
       this.emit();
     });
     localSocket.on("message", (msg, rinfo) => {
-      // Packet from the guest's Minecraft -> tunnel to relay -> host.
-      this.lastGameAddr = { address: rinfo.address, port: rinfo.port };
-      this.status.bytesUp += msg.length;
-      this.tunnelToRelay(msg);
-      this.emit();
+      if (cfg.mode === "guest") {
+        // Remember where the game is so replies can go back to it.
+        this.lastGameAddr = { address: rinfo.address, port: rinfo.port };
+      }
+      this.tunnelToRelay(new Uint8Array(msg));
     });
-    await new Promise<void>((resolve) => localSocket.bind(localPort, "127.0.0.1", () => resolve()));
-  }
 
-  private registerWithRelay(): void {
-    if (!this.relaySocket) return;
-    const frame = encodeRelayRegister(this.relay.token);
-    this.send(this.relaySocket, frame, this.relay.port, this.relay.host);
-  }
+    if (cfg.mode === "guest") {
+      await new Promise<void>((resolve) => localSocket.bind(cfg.localPort, "127.0.0.1", () => resolve()));
+    } else {
+      this.lastGameAddr = {
+        address: cfg.gameHost ?? "127.0.0.1",
+        port: cfg.gamePort ?? BEDROCK_DEFAULT_PORT,
+      };
+      await new Promise<void>((resolve) => localSocket.bind(0, "0.0.0.0", () => resolve()));
+    }
 
-  private tunnelToRelay(msg: Uint8Array): void {
-    if (!this.relaySocket) return;
-    this.send(this.relaySocket, msg, this.relay.port, this.relay.host);
-  }
-
-  private deliverToGame(msg: Uint8Array): void {
-    if (!this.localSocket || !this.lastGameAddr) return;
-    this.send(this.localSocket, msg, this.lastGameAddr.port, this.lastGameAddr.address);
+    // Relay WebSocket side.
+    const ws = new WebSocket(`${RELAY_WS_URL}?token=${encodeURIComponent(this.relay.token)}`);
+    ws.binaryType = "arraybuffer";
+    this.ws = ws;
+    ws.onopen = () => {
+      this.status.running = true;
+      this.emit();
+    };
+    ws.onmessage = (event) => {
+      const data = event.data;
+      const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : null;
+      if (!bytes) return;
+      this.status.bytesDown += bytes.length;
+      this.sendToGame(bytes);
+      this.emit();
+    };
+    ws.onerror = () => {
+      this.status.lastError = "relay connection error";
+      this.emit();
+    };
+    ws.onclose = () => {
+      this.status.running = false;
+      this.emit();
+    };
   }
 
   getStatus(): ProxyStatus {
@@ -162,13 +142,13 @@ export class UdpProxy {
   }
 
   stop(): void {
-    if (this.keepalive) {
-      clearInterval(this.keepalive);
-      this.keepalive = null;
+    try {
+      this.ws?.close();
+    } catch {
+      // ignore
     }
-    this.relaySocket?.close();
     this.localSocket?.close();
-    this.relaySocket = null;
+    this.ws = null;
     this.localSocket = null;
     this.status = { running: false, bytesUp: 0, bytesDown: 0 };
     this.emit();

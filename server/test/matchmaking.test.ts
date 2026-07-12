@@ -17,7 +17,7 @@ describe("matchmaking HTTP API", () => {
   let relay: RelayServer;
 
   beforeEach(async () => {
-    const config = { ...loadConfig(), relayPort: 0, publicHost: "test.local" };
+    const config = loadConfig();
     const store = new RoomStore(config.sessionTtlSeconds);
     relay = new RelayServer();
     const hub = new SignalingHub(store);
@@ -67,7 +67,6 @@ describe("matchmaking HTTP API", () => {
     const joined = res.json<JoinRoomResponse>();
     expect(joined.room.guestCount).toBe(1);
     expect(joined.guestToken).toBeTruthy();
-    expect(joined.relay.host).toBe("test.local");
     // Guest relay token must differ from the host token.
     expect(joined.relay.token).not.toBe(created.hostToken);
     // The relay must now know about the guest's token.

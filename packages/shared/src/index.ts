@@ -53,12 +53,16 @@ export interface RoomSummary {
   createdAt: number;
 }
 
+/** WebSocket path where on-device proxies connect to the relay. */
+export const RELAY_PATH = "/relay";
+
 export interface RelayEndpoint {
-  /** Public host/IP the on-device UDP proxy should send packets to. */
-  host: string;
-  /** UDP port of the relay. */
-  port: number;
-  /** Opaque per-peer session token; the relay routes datagrams by this token. */
+  /**
+   * Opaque per-peer session token. The proxy connects to
+   * `${wsBase}${RELAY_PATH}?token=<token>` and the relay pipes messages to the
+   * paired peer. Transport is WebSocket (TCP) so the backend needs no UDP/public
+   * IP and hosts free anywhere.
+   */
   token: string;
 }
 
@@ -112,32 +116,3 @@ export type SignalServerMessage =
   | { type: "host-left" }
   | { type: "pong" }
   | { type: "error"; message: string };
-
-/** First bytes of every relay control frame (registration handshake). */
-export const RELAY_MAGIC = Uint8Array.from([0x43, 0x54, 0x30, 0x31]); // "CT01"
-
-/**
- * When a proxy first contacts the relay it sends a registration frame:
- *   RELAY_MAGIC (4 bytes) + tokenLength (1 byte) + tokenBytes (utf8).
- * After registration, all further datagrams from that source address are
- * forwarded verbatim to the paired peer. Build/parse with the helpers below.
- */
-export function encodeRelayRegister(token: string): Uint8Array {
-  const tokenBytes = new TextEncoder().encode(token);
-  const buf = new Uint8Array(RELAY_MAGIC.length + 1 + tokenBytes.length);
-  buf.set(RELAY_MAGIC, 0);
-  buf[RELAY_MAGIC.length] = tokenBytes.length;
-  buf.set(tokenBytes, RELAY_MAGIC.length + 1);
-  return buf;
-}
-
-export function tryParseRelayRegister(data: Uint8Array): string | null {
-  if (data.length < RELAY_MAGIC.length + 1) return null;
-  for (let i = 0; i < RELAY_MAGIC.length; i++) {
-    if (data[i] !== RELAY_MAGIC[i]) return null;
-  }
-  const tokenLen = data[RELAY_MAGIC.length];
-  const start = RELAY_MAGIC.length + 1;
-  if (data.length < start + tokenLen) return null;
-  return new TextDecoder().decode(data.subarray(start, start + tokenLen));
-}
