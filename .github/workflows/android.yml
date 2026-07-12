@@ -6,7 +6,7 @@ on:
       api_url:
         description: "Backend URL baked into the app (EXPO_PUBLIC_API_URL)"
         required: false
-        default: "https://crafttogether-hfses.fly.dev"
+        default: "https://crafttogether-hfses.onrender.com"
   push:
     tags:
       - "v*"
@@ -18,7 +18,7 @@ jobs:
   build-apk:
     runs-on: ubuntu-latest
     env:
-      EXPO_PUBLIC_API_URL: ${{ github.event.inputs.api_url || 'https://crafttogether-hfses.fly.dev' }}
+      EXPO_PUBLIC_API_URL: ${{ github.event.inputs.api_url || 'https://crafttogether-hfses.onrender.com' }}
     steps:
       - uses: actions/checkout@v4
 

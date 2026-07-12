@@ -118,13 +118,17 @@ tela da sala? endereço/porta digitados exatamente? a rede não bloqueia UDP
 O relay trafega por **WebSocket (TCP)**, então o backend usa **uma única porta HTTP**
 (sem UDP e sem IP dedicado) e roda em qualquer plano gratuito.
 
-**Fly.io (recomendado):** já há `fly.toml` e `.github/workflows/deploy-backend.yml`.
-1. Crie uma conta grátis em fly.io e gere um token em *Account → Access Tokens*.
-2. No GitHub, adicione o token como secret **`FLY_API_TOKEN`** (Settings → Secrets → Actions).
-3. Rode o workflow **"Deploy backend (Fly.io)"** na aba Actions. Ele cria o app e faz o deploy.
+**Render (recomendado — grátis, sem cartão):** há um `render.yaml` (Blueprint).
+1. Deploy em 1 clique: https://render.com/deploy?repo=https://github.com/Hfses/Minicraft
+2. Faça login (pode ser com GitHub), autorize o repositório e confirme (**Apply**).
+3. Fica em `https://<nome>.onrender.com` (WS/WSS na mesma URL). Instâncias grátis
+   hibernam quando ociosas e acordam na primeira conexão (~1 min).
 
-O app fica em `https://<app>.fly.dev` (WS/WSS na mesma URL). Aponte o build do APK
-para essa URL (campo `api_url` do workflow "Android APK").
+**Fly.io (alternativa):** há `fly.toml` e o workflow "Deploy backend (Fly.io)".
+Obs.: o Fly exige cartão no cadastro; por isso o Render é o caminho padrão.
+
+Depois do deploy, aponte o build do APK para a URL (campo `api_url` do workflow
+"Android APK").
 
 Localmente com Docker:
 ```bash

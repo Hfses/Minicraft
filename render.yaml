@@ -1,0 +1,17 @@
+# Render.com Blueprint — free tier, no credit card, supports WebSockets.
+# Deploy: https://render.com/deploy?repo=https://github.com/Hfses/Minicraft
+# (Render reads this file, builds the backend from server/Dockerfile, and hosts it
+# at https://<name>.onrender.com. Free instances sleep when idle and cold-start on
+# the next request.)
+services:
+  - type: web
+    name: crafttogether-hfses
+    runtime: docker
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: SESSION_TTL_SECONDS
+        value: "180"
