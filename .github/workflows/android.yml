@@ -1,0 +1,80 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: "Backend URL baked into the app (EXPO_PUBLIC_API_URL)"
+        required: false
+        default: "http://10.0.2.2:8080"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_API_URL: ${{ github.event.inputs.api_url || 'http://10.0.2.2:8080' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Prebuild Android project
+        working-directory: app
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build debug APK
+        working-directory: app/android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk dist/CraftTogether-debug.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftTogether-debug-apk
+          path: dist/CraftTogether-debug.apk
+
+      - name: Publish to a Release (permanent download link)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'apk-latest' }}
+          name: CraftTogether APK (debug)
+          body: |
+            APK de debug do CraftTogether para Android.
+
+            Como instalar:
+            1. Baixe `CraftTogether-debug.apk` abaixo.
+            2. No celular, permita "instalar de fontes desconhecidas".
+            3. Abra o APK e instale.
+
+            Observacao: para criar/entrar em salas o backend precisa estar rodando e
+            o app precisa apontar para ele (EXPO_PUBLIC_API_URL no build).
+          files: dist/CraftTogether-debug.apk
+          fail_on_unmatched_files: true

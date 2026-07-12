@@ -12,7 +12,8 @@ const config: ExpoConfig = {
   orientation: "portrait",
   scheme: "crafttogether",
   userInterfaceStyle: "automatic",
-  newArchEnabled: true,
+  // Old architecture keeps the CI APK build simpler and more reliable for now.
+  newArchEnabled: false,
   splash: {
     resizeMode: "contain",
     backgroundColor: "#0e1a12",
