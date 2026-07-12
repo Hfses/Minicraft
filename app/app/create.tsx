@@ -3,7 +3,7 @@ import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Button, Card, Screen, Subtitle, Title } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
-import { api, ApiError } from "@/api/client";
+import { api, ApiError, NetworkError, wakeBackend } from "@/api/client";
 import { getPlayerName } from "@/state/session";
 import { setActiveSession } from "@/state/active";
 
@@ -15,6 +15,7 @@ export default function CreateRoom() {
   const [hostName, setHostName] = useState("");
   const [isPublic, setIsPublic] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -25,6 +26,10 @@ export default function CreateRoom() {
     setLoading(true);
     setError(null);
     try {
+      // Wake the free-tier server (cold start can take ~1 min) with feedback.
+      setStatusMsg("Conectando ao servidor… (pode levar até 1 min na 1ª vez)");
+      await wakeBackend();
+      setStatusMsg("Criando sala…");
       const res = await api.createRoom({
         name: roomName,
         hostName,
@@ -38,8 +43,15 @@ export default function CreateRoom() {
       });
       router.replace(`/room/${res.room.id}`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.code : "Falha ao criar a sala");
+      if (e instanceof NetworkError) {
+        setError("Não consegui falar com o servidor. Cheque sua internet e tente de novo.");
+      } else if (e instanceof ApiError) {
+        setError(`Falha ao criar a sala (${e.code}).`);
+      } else {
+        setError("Falha ao criar a sala. Tente de novo.");
+      }
     } finally {
+      setStatusMsg(null);
       setLoading(false);
     }
   };
@@ -85,8 +97,13 @@ export default function CreateRoom() {
         </View>
       </Card>
 
+      {loading && statusMsg && <Text style={styles.status}>{statusMsg}</Text>}
       {error && <Text style={styles.error}>{error}</Text>}
-      <Button label="Criar sala" onPress={onCreate} loading={loading} />
+      <Button
+        label={error ? "Tentar de novo" : "Criar sala"}
+        onPress={onCreate}
+        loading={loading}
+      />
     </Screen>
   );
 }
@@ -105,5 +122,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.sm },
+  status: { color: colors.accent, fontSize: 14 },
   error: { color: colors.danger, fontSize: 14 },
 });

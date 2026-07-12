@@ -136,15 +136,22 @@ docker build -f server/Dockerfile -t crafttogether-server .
 docker run -p 8080:8080 crafttogether-server
 ```
 
-## Builds do app (EAS)
+## Builds do app (via GitHub Actions, sem PC)
 
-```bash
-npm i -g eas-cli
-eas build -p android --profile preview     # gera um APK instalável
-eas build -p ios --profile preview         # requer conta Apple Developer
-```
+Os builds saem prontos como **Release** no GitHub — sem instalar nada localmente.
 
-Ajuste `EXPO_PUBLIC_API_URL` nos perfis do `app/eas.json` para o seu backend.
+- **Android (APK):** rode o workflow **"Android APK"** (aba Actions). Sai em
+  `releases/tag/apk-latest` como `CraftTogether.apk`. Instale e permita "fontes
+  desconhecidas".
+- **iPhone (.ipa, grátis):** rode o workflow **"iOS IPA"**. Sai em
+  `releases/tag/ipa-latest` como `CraftTogether.ipa` (não assinado). Instale com o
+  **Sideloadly** (sideloadly.io) ou **AltStore** usando seu **Apple ID grátis** —
+  reinstalar a cada 7 dias. Para instalação sem renovar (TestFlight/loja) é preciso
+  conta **Apple Developer paga**.
+
+Ambos os workflows aceitam o campo `api_url` para apontar o app ao seu backend.
+Alternativa profissional: **EAS** (`eas build -p android|ios`) — iOS via EAS
+requer conta Apple Developer.
 
 ## Roadmap
 

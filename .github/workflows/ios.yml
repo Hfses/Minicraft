@@ -1,0 +1,90 @@
+name: iOS IPA
+
+# Builds an UNSIGNED .ipa. Install it on an iPhone with Sideloadly/AltStore using
+# a free Apple ID (it re-signs on your device; renew every 7 days). No paid Apple
+# Developer account required for testing.
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: "Backend URL baked into the app (EXPO_PUBLIC_API_URL)"
+        required: false
+        default: "https://crafttogether-hfses.onrender.com"
+
+permissions:
+  contents: write
+
+jobs:
+  build-ipa:
+    runs-on: macos-14
+    env:
+      EXPO_PUBLIC_API_URL: ${{ github.event.inputs.api_url || 'https://crafttogether-hfses.onrender.com' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Prebuild iOS project
+        working-directory: app
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        working-directory: app/ios
+        run: pod install --repo-update
+
+      - name: Build unsigned archive
+        working-directory: app/ios
+        run: |
+          WS=$(ls -d *.xcworkspace | head -n1)
+          SCHEME="${WS%.xcworkspace}"
+          echo "workspace=$WS scheme=$SCHEME"
+          xcodebuild \
+            -workspace "$WS" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath build/App.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive
+
+      - name: Package unsigned IPA
+        working-directory: app/ios
+        run: |
+          mkdir -p Payload
+          cp -R build/App.xcarchive/Products/Applications/*.app Payload/
+          zip -qry "$GITHUB_WORKSPACE/CraftTogether.ipa" Payload
+          ls -lh "$GITHUB_WORKSPACE/CraftTogether.ipa"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftTogether-ipa
+          path: CraftTogether.ipa
+
+      - name: Publish to a Release (permanent download link)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ipa-latest
+          name: CraftTogether iOS (.ipa não assinado)
+          body: |
+            .ipa **não assinado** do CraftTogether para iPhone.
+
+            Como instalar (grátis, com seu Apple ID):
+            1. Baixe `CraftTogether.ipa`.
+            2. No PC/Mac, instale o **Sideloadly** (sideloadly.io) ou use o **AltStore**.
+            3. Conecte o iPhone, arraste o .ipa, faça login com seu Apple ID e instale.
+            4. No iPhone: Ajustes → Geral → VPN e Gerenciamento → confie no seu perfil.
+
+            Obs.: no modo grátis o app precisa ser reinstalado a cada 7 dias (limite da Apple).
+          files: CraftTogether.ipa
+          fail_on_unmatched_files: true

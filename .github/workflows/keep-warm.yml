@@ -1,0 +1,24 @@
+name: Keep backend warm
+
+# Pings the Render backend so the free instance doesn't sleep, avoiding the
+# ~1 min cold start when someone opens a room. Best-effort: never fails the run.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: |
+          URL="https://crafttogether-hfses.onrender.com/health"
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 60 "$URL" || echo 000)
+            echo "attempt $i -> HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 20
+          done
+          echo "backend not 200 yet (may be waking) — ignoring"
+          exit 0

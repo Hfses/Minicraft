@@ -4,6 +4,7 @@ import { Link, useRouter } from "expo-router";
 import { Button, Card, Screen, Subtitle, Title } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
 import { getPlayerName, setPlayerName } from "@/state/session";
+import { prewarmBackend } from "@/api/client";
 
 export default function Home() {
   const router = useRouter();
@@ -11,6 +12,8 @@ export default function Home() {
 
   useEffect(() => {
     getPlayerName().then(setName);
+    // Start waking the free-tier server in the background so creating a room is fast.
+    prewarmBackend();
   }, []);
 
   const persistName = (value: string) => {

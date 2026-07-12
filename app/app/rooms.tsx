@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { isValidRoomCode, normalizeRoomCode, type RoomSummary } from "@crafttogether/shared";
 import { Button, Card, Screen, Subtitle, Title } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
-import { api, ApiError } from "@/api/client";
+import { api, ApiError, NetworkError, wakeBackend } from "@/api/client";
 import { getPlayerName } from "@/state/session";
 import { setActiveSession } from "@/state/active";
 import { discoverLanWorlds, type LanWorld } from "@/net/lanDiscovery";
@@ -18,15 +18,26 @@ export default function Rooms() {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [list] = await Promise.all([api.listRooms()]);
+      // Wake the free-tier server first (cold start ~1 min) so the list loads.
+      setStatusMsg("Conectando ao servidor… (pode levar até 1 min na 1ª vez)");
+      await wakeBackend();
+      setStatusMsg(null);
+      const list = await api.listRooms();
       setRooms(list.rooms);
-    } catch {
-      setError("Não foi possível carregar as salas.");
+    } catch (e) {
+      setStatusMsg(null);
+      setError(
+        e instanceof NetworkError
+          ? "Não consegui falar com o servidor. Cheque a internet e toque em Atualizar."
+          : "Não foi possível carregar as salas.",
+      );
     } finally {
       setLoading(false);
     }
@@ -51,6 +62,9 @@ export default function Rooms() {
     setJoining(true);
     setError(null);
     try {
+      setStatusMsg("Conectando ao servidor…");
+      await wakeBackend();
+      setStatusMsg("Entrando na sala…");
       const guestName = (await getPlayerName()) || "Amigo";
       const res = await api.joinRoom({ code: normalized, guestName });
       setActiveSession({
@@ -62,16 +76,19 @@ export default function Rooms() {
       });
       router.replace(`/room/${res.room.id}`);
     } catch (e) {
-      const code =
-        e instanceof ApiError
-          ? e.code === "room_not_found"
-            ? "Sala não encontrada."
-            : e.code === "room_full"
-              ? "A sala está cheia."
-              : "Não foi possível entrar."
-          : "Não foi possível entrar.";
-      setError(code);
+      const msg =
+        e instanceof NetworkError
+          ? "Não consegui falar com o servidor. Tente de novo."
+          : e instanceof ApiError
+            ? e.code === "room_not_found"
+              ? "Sala não encontrada."
+              : e.code === "room_full"
+                ? "A sala está cheia."
+                : "Não foi possível entrar."
+            : "Não foi possível entrar.";
+      setError(msg);
     } finally {
+      setStatusMsg(null);
       setJoining(false);
     }
   };
@@ -96,6 +113,7 @@ export default function Rooms() {
         </View>
       </Card>
 
+      {statusMsg && <Text style={styles.status}>{statusMsg}</Text>}
       {error && <Text style={styles.error}>{error}</Text>}
 
       <View style={styles.header}>
@@ -162,5 +180,6 @@ const styles = StyleSheet.create({
   empty: { color: colors.textMuted, fontStyle: "italic" },
   roomName: { color: colors.text, fontSize: 18, fontWeight: "700" },
   meta: { color: colors.textMuted, fontSize: 13 },
+  status: { color: colors.accent, fontSize: 14 },
   error: { color: colors.danger, fontSize: 14 },
 });
