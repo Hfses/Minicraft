@@ -44,9 +44,21 @@ jobs:
         working-directory: app
         run: npx expo prebuild --platform android --no-install
 
+      - name: Use smaller Gradle distribution (faster, less flaky download)
+        working-directory: app/android
+        run: sed -i 's/-all.zip/-bin.zip/' gradle/wrapper/gradle-wrapper.properties
+
       - name: Build debug APK
         working-directory: app/android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          for attempt in 1 2 3; do
+            echo "== gradle assembleDebug attempt $attempt =="
+            ./gradlew assembleDebug --no-daemon --stacktrace && exit 0
+            echo "attempt $attempt failed; retrying in 20s"
+            sleep 20
+          done
+          echo "gradle build failed after 3 attempts"
+          exit 1
 
       - name: Rename APK
         run: |
