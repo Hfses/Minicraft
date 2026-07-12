@@ -48,6 +48,10 @@ jobs:
         working-directory: app/android
         run: sed -i 's/-all.zip/-bin.zip/' gradle/wrapper/gradle-wrapper.properties
 
+      - name: Pin Kotlin version (Compose compiler in expo-modules-core needs 1.9.25)
+        working-directory: app/android
+        run: echo "android.kotlinVersion=1.9.25" >> gradle.properties
+
       - name: Build debug APK
         working-directory: app/android
         run: |
