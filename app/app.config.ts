@@ -12,11 +12,13 @@ const config: ExpoConfig = {
   orientation: "portrait",
   scheme: "crafttogether",
   userInterfaceStyle: "automatic",
+  icon: "./assets/icon.png",
   // Old architecture keeps the CI APK build simpler and more reliable for now.
   newArchEnabled: false,
   splash: {
+    image: "./assets/splash-icon.png",
     resizeMode: "contain",
-    backgroundColor: "#0e1a12",
+    backgroundColor: "#14532d",
   },
   ios: {
     supportsTablet: true,
@@ -31,6 +33,13 @@ const config: ExpoConfig = {
   android: {
     package: "com.crafttogether.app",
     permissions: ["INTERNET", "ACCESS_NETWORK_STATE", "ACCESS_WIFI_STATE"],
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-icon.png",
+      backgroundColor: "#14532d",
+    },
+  },
+  web: {
+    favicon: "./assets/favicon.png",
   },
   plugins: [
     "expo-router",

@@ -58,12 +58,12 @@ jobs:
           echo "----- kotlinVersion references -----"
           grep -rn "1\.9\.2[45]" build.gradle gradle.properties || true
 
-      - name: Build debug APK
+      - name: Build release APK (embeds the JS bundle — runs without Metro)
         working-directory: app/android
         run: |
           for attempt in 1 2 3; do
-            echo "== gradle assembleDebug attempt $attempt =="
-            ./gradlew assembleDebug --no-daemon --stacktrace && exit 0
+            echo "== gradle assembleRelease attempt $attempt =="
+            ./gradlew assembleRelease --no-daemon --stacktrace && exit 0
             echo "attempt $attempt failed; retrying in 20s"
             sleep 20
           done
@@ -73,28 +73,28 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p dist
-          cp app/android/app/build/outputs/apk/debug/app-debug.apk dist/CraftTogether-debug.apk
+          cp app/android/app/build/outputs/apk/release/app-release.apk dist/CraftTogether.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CraftTogether-debug-apk
-          path: dist/CraftTogether-debug.apk
+          name: CraftTogether-apk
+          path: dist/CraftTogether.apk
 
       - name: Publish to a Release (permanent download link)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'apk-latest' }}
-          name: CraftTogether APK (debug)
+          name: CraftTogether APK
           body: |
-            APK de debug do CraftTogether para Android.
+            APK do CraftTogether para Android (release — roda sem Metro/PC).
 
             Como instalar:
-            1. Baixe `CraftTogether-debug.apk` abaixo.
+            1. Baixe `CraftTogether.apk` abaixo.
             2. No celular, permita "instalar de fontes desconhecidas".
             3. Abra o APK e instale.
 
             Observacao: para criar/entrar em salas o backend precisa estar rodando e
-            o app precisa apontar para ele (EXPO_PUBLIC_API_URL no build).
-          files: dist/CraftTogether-debug.apk
+            o app precisa apontar para ele (rode o workflow com o campo api_url).
+          files: dist/CraftTogether.apk
           fail_on_unmatched_files: true
