@@ -51,10 +51,12 @@ jobs:
       - name: Pin Kotlin version (Compose compiler in expo-modules-core needs 1.9.25)
         working-directory: app/android
         run: |
-          # Leading newline so the property is never glued onto the last line.
+          # expo-build-properties patches build.gradle during prebuild; this sed is a
+          # dependency-free backup that rewrites any hardcoded 1.9.24 to 1.9.25.
           printf '\nandroid.kotlinVersion=1.9.25\n' >> gradle.properties
-          echo "----- gradle.properties -----"
-          cat gradle.properties
+          sed -i 's/1\.9\.24/1.9.25/g' build.gradle || true
+          echo "----- kotlinVersion references -----"
+          grep -rn "1\.9\.2[45]" build.gradle gradle.properties || true
 
       - name: Build debug APK
         working-directory: app/android

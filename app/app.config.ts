@@ -32,7 +32,11 @@ const config: ExpoConfig = {
     package: "com.crafttogether.app",
     permissions: ["INTERNET", "ACCESS_NETWORK_STATE", "ACCESS_WIFI_STATE"],
   },
-  plugins: ["expo-router"],
+  plugins: [
+    "expo-router",
+    // Compose compiler in expo-modules-core (SDK 52) needs Kotlin 1.9.25.
+    ["expo-build-properties", { android: { kotlinVersion: "1.9.25" } }],
+  ],
   experiments: {
     typedRoutes: true,
   },
