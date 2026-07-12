@@ -50,7 +50,11 @@ jobs:
 
       - name: Pin Kotlin version (Compose compiler in expo-modules-core needs 1.9.25)
         working-directory: app/android
-        run: echo "android.kotlinVersion=1.9.25" >> gradle.properties
+        run: |
+          # Leading newline so the property is never glued onto the last line.
+          printf '\nandroid.kotlinVersion=1.9.25\n' >> gradle.properties
+          echo "----- gradle.properties -----"
+          cat gradle.properties
 
       - name: Build debug APK
         working-directory: app/android
