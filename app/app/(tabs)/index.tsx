@@ -93,9 +93,6 @@ export default function Home() {
               </>
             )}
           </View>
-          <Link href="/friends" style={styles.friendsLink}>
-            <Text style={styles.friendsLinkText}>Amigos</Text>
-          </Link>
         </Pressable>
 
         {/* Quick actions */}
@@ -202,8 +199,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     paddingVertical: 2,
   },
-  friendsLink: { paddingVertical: 6, paddingHorizontal: 10 },
-  friendsLinkText: { color: colors.accent, fontSize: 14, fontWeight: "700" },
   actionsRow: { flexDirection: "row", gap: spacing.md },
   actionCard: {
     flex: 1,

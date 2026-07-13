@@ -7,6 +7,7 @@ import { colors, radius, spacing } from "@/theme";
 import { api, ApiError, NetworkError, wakeBackend } from "@/api/client";
 import { getPlayerName } from "@/state/session";
 import { setActiveSession } from "@/state/active";
+import { recordHistory } from "@/state/history";
 import { discoverLanWorlds, type LanWorld } from "@/net/lanDiscovery";
 
 const GUEST_LOCAL_PORT = 19140;
@@ -75,6 +76,7 @@ export default function Rooms() {
         relay: res.relay,
         localPort: GUEST_LOCAL_PORT,
       });
+      recordHistory({ kind: "joined", roomName: res.room.name, code: res.room.code });
       router.replace(`/room/${res.room.id}`);
     } catch (e) {
       const msg =

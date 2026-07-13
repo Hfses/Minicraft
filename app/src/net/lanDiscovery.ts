@@ -1,5 +1,5 @@
-import dgram from "react-native-udp";
 import { BEDROCK_DEFAULT_PORT } from "@crafttogether/shared";
+import { loadDgram } from "./udp";
 
 /**
  * Discovers Minecraft Bedrock worlds on the same Wi-Fi by sending a RakNet
@@ -73,6 +73,9 @@ interface BroadcastSocket {
  * keyed by address:port.
  */
 export function discoverLanWorlds(timeoutMs = 1500): Promise<LanWorld[]> {
+  const dgram = loadDgram();
+  // Build without the native UDP module (e.g. Expo Go): no LAN scan, no crash.
+  if (!dgram) return Promise.resolve([]);
   return new Promise((resolve) => {
     const socket = dgram.createSocket({ type: "udp4" }) as unknown as BroadcastSocket;
     const found = new Map<string, LanWorld>();

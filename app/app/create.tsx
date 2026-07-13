@@ -6,6 +6,7 @@ import { colors, radius, spacing } from "@/theme";
 import { api, ApiError, NetworkError, wakeBackend } from "@/api/client";
 import { getPlayerName } from "@/state/session";
 import { setActiveSession } from "@/state/active";
+import { recordHistory } from "@/state/history";
 
 const GUEST_LOCAL_PORT = 19140;
 
@@ -41,6 +42,7 @@ export default function CreateRoom() {
         token: res.hostToken,
         localPort: GUEST_LOCAL_PORT,
       });
+      recordHistory({ kind: "hosted", roomName: res.room.name, code: res.room.code });
       router.replace(`/room/${res.room.id}`);
     } catch (e) {
       if (e instanceof NetworkError) {

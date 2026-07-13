@@ -58,11 +58,9 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: colors.bg },
         }}
       >
-        <Stack.Screen name="index" options={{ title: "CraftTogether" }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="create" options={{ title: "Criar sala" }} />
-        <Stack.Screen name="rooms" options={{ title: "Encontrar salas" }} />
         <Stack.Screen name="room/[id]" options={{ title: "Sala" }} />
-        <Stack.Screen name="friends" options={{ title: "Amigos" }} />
         <Stack.Screen name="guide" options={{ title: "Como jogar junto" }} />
       </Stack>
     </SafeAreaProvider>
