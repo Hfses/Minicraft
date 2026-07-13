@@ -26,7 +26,7 @@ export default function RoomScreen() {
   const [peers, setPeers] = useState<PeerInfo[]>([]);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [chatText, setChatText] = useState("");
-  const [connState, setConnState] = useState<"idle" | "linking" | "ready">("idle");
+  const [connState, setConnState] = useState<"idle" | "linking" | "ready" | "unavailable">("idle");
 
   const signalingRef = useRef<SignalingClient | null>(null);
   const proxiesRef = useRef<UdpProxy[]>([]);
@@ -37,9 +37,10 @@ export default function RoomScreen() {
     if (session.role === "guest" && session.relay) {
       const proxy = new UdpProxy(session.relay, { mode: "guest", localPort: session.localPort });
       proxy.onStatus = (s) => {
-        if (s.running) setConnState("ready");
+        if (s.lastError === "udp_unavailable") setConnState("unavailable");
+        else if (s.running) setConnState("ready");
       };
-      proxy.start();
+      proxy.start().catch(() => setConnState("unavailable"));
       proxiesRef.current.push(proxy);
       setConnState("linking");
     }
@@ -92,9 +93,10 @@ export default function RoomScreen() {
   const startHostProxy = (relay: RelayEndpoint) => {
     const proxy = new UdpProxy(relay, { mode: "host" });
     proxy.onStatus = (s) => {
-      if (s.running) setConnState("ready");
+      if (s.lastError === "udp_unavailable") setConnState("unavailable");
+      else if (s.running) setConnState("ready");
     };
-    proxy.start();
+    proxy.start().catch(() => setConnState("unavailable"));
     proxiesRef.current.push(proxy);
     setConnState("linking");
   };
@@ -177,9 +179,27 @@ export default function RoomScreen() {
 
       <Card>
         <Text style={styles.label}>Status da conexão</Text>
-        <Text style={[styles.status, connState === "ready" && { color: colors.primary }]}>
-          {connState === "ready" ? "● Ponte ativa" : connState === "linking" ? "● Conectando…" : "○ Aguardando"}
+        <Text
+          style={[
+            styles.status,
+            connState === "ready" && { color: colors.primary },
+            connState === "unavailable" && { color: colors.danger },
+          ]}
+        >
+          {connState === "ready"
+            ? "● Ponte ativa"
+            : connState === "linking"
+              ? "● Conectando…"
+              : connState === "unavailable"
+                ? "● Ponte indisponível neste build"
+                : "○ Aguardando"}
         </Text>
+        {connState === "unavailable" && (
+          <Text style={styles.hint}>
+            Este build do app não tem o módulo de rede (Expo Go não suporta). Instale o APK
+            de release para jogar. O chat e a sala continuam funcionando normalmente.
+          </Text>
+        )}
         <Button label="Abrir no Minecraft" onPress={openMinecraft} />
         {!isHost && (
           <Text style={styles.hint}>
@@ -208,10 +228,15 @@ export default function RoomScreen() {
 
       <Card>
         <Text style={styles.label}>Na sala ({guestPeers.length + 1})</Text>
-        <Text style={styles.peer}>👑 {room.hostName} (host)</Text>
+        <View style={styles.peerRow}>
+          <Text style={styles.peer}>{room.hostName}</Text>
+          <View style={styles.hostBadge}>
+            <Text style={styles.hostBadgeText}>HOST</Text>
+          </View>
+        </View>
         {guestPeers.map((p) => (
           <View key={p.peerId} style={styles.peerRow}>
-            <Text style={styles.peer}>🎮 {p.name}</Text>
+            <Text style={styles.peer}>{p.name}</Text>
             {isHost && (
               <Pressable onPress={() => confirmKick(p)} style={styles.kickBtn}>
                 <Text style={styles.kickText}>Expulsar</Text>
@@ -265,6 +290,13 @@ const styles = StyleSheet.create({
   mono: { color: colors.accent, fontWeight: "800" },
   peer: { color: colors.text, fontSize: 16 },
   peerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  hostBadge: {
+    backgroundColor: colors.primaryDark,
+    borderRadius: radius.sm,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+  },
+  hostBadgeText: { color: colors.text, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
   kickBtn: {
     backgroundColor: colors.danger,
     borderRadius: radius.sm,

@@ -1,6 +1,30 @@
-import dgram from "react-native-udp";
 import { BEDROCK_DEFAULT_PORT, type RelayEndpoint } from "@crafttogether/shared";
 import { RELAY_WS_URL } from "@/config";
+
+/**
+ * react-native-udp is a NATIVE module. Loading it at import time crashes the
+ * whole route (white screen) when the app runs in a build that doesn't include
+ * it (e.g. Expo Go). Load it lazily and fail soft instead.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let dgramModule: any | undefined;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function loadDgram(): any | null {
+  if (dgramModule !== undefined) return dgramModule;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require("react-native-udp");
+    dgramModule = mod?.default ?? mod ?? null;
+  } catch {
+    dgramModule = null;
+  }
+  return dgramModule;
+}
+
+/** True when the native UDP module is available in this build. */
+export function isUdpAvailable(): boolean {
+  return loadDgram() !== null;
+}
 
 /**
  * On-device bridge between the local Minecraft game (UDP/RakNet) and the cloud
@@ -85,6 +109,15 @@ export class UdpProxy {
 
   async start(): Promise<void> {
     const cfg = this.config;
+
+    const dgram = loadDgram();
+    if (!dgram) {
+      // Build without the native UDP module (e.g. Expo Go): report and bail
+      // out instead of crashing the screen.
+      this.status.lastError = "udp_unavailable";
+      this.emit();
+      return;
+    }
 
     // Local UDP side.
     const localSocket = dgram.createSocket({ type: "udp4" }) as unknown as UdpSocket;
