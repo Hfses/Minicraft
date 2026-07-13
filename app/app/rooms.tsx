@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { isValidRoomCode, normalizeRoomCode, type RoomSummary } from "@crafttogether/shared";
-import { Button, Card, Screen, Subtitle, Title } from "@/components/ui";
+import { Avatar, Badge, Button, Card, PlayersBar, Screen, Subtitle, Title } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
 import { api, ApiError, NetworkError, wakeBackend } from "@/api/client";
 import { getPlayerName } from "@/state/session";
@@ -13,9 +13,10 @@ const GUEST_LOCAL_PORT = 19140;
 
 export default function Rooms() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ code?: string }>();
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [lan, setLan] = useState<LanWorld[]>([]);
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(params.code ? String(params.code).toUpperCase() : "");
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -128,15 +129,32 @@ export default function Rooms() {
       ) : rooms.length === 0 ? (
         <Text style={styles.empty}>Nenhuma sala pública no momento. Crie a sua!</Text>
       ) : (
-        rooms.map((room) => (
-          <Card key={room.id}>
-            <Text style={styles.roomName}>{room.name}</Text>
-            <Text style={styles.meta}>
-              Host: {room.hostName} · {room.guestCount}/{room.maxGuests} jogadores
-            </Text>
-            <Button label={`Entrar (${room.code})`} onPress={() => join(room.code)} />
-          </Card>
-        ))
+        rooms.map((room) => {
+          const full = room.guestCount >= room.maxGuests;
+          return (
+            <Pressable
+              key={room.id}
+              onPress={() => !full && join(room.code)}
+              disabled={full || joining}
+              style={({ pressed }) => [styles.roomCard, pressed && { opacity: 0.85 }, full && { opacity: 0.6 }]}
+            >
+              <Avatar name={room.hostName} size={44} />
+              <View style={styles.roomInfo}>
+                <View style={styles.roomTopRow}>
+                  <Text style={styles.roomName} numberOfLines={1}>
+                    {room.name}
+                  </Text>
+                  <Badge
+                    label={full ? "CHEIA" : "ENTRAR"}
+                    color={full ? colors.danger : colors.primaryDark}
+                  />
+                </View>
+                <Text style={styles.meta}>Host: {room.hostName} · Código {room.code}</Text>
+                <PlayersBar current={room.guestCount + 1} max={room.maxGuests + 1} />
+              </View>
+            </Pressable>
+          );
+        })
       )}
 
       {lan.length > 0 && (
@@ -178,8 +196,20 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   refresh: { color: colors.accent, fontWeight: "600" },
   empty: { color: colors.textMuted, fontStyle: "italic" },
-  roomName: { color: colors.text, fontSize: 18, fontWeight: "700" },
+  roomName: { color: colors.text, fontSize: 16, fontWeight: "800", flex: 1 },
   meta: { color: colors.textMuted, fontSize: 13 },
+  roomCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  roomInfo: { flex: 1, gap: 4 },
+  roomTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   status: { color: colors.accent, fontSize: 14 },
   error: { color: colors.danger, fontSize: 14 },
 });

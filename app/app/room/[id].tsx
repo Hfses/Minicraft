@@ -3,7 +3,7 @@ import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from "re
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import type { PeerInfo, RelayEndpoint, RoomSummary, SignalServerMessage } from "@crafttogether/shared";
-import { Button, Card, Screen, Subtitle, Title } from "@/components/ui";
+import { Avatar, Badge, Button, Card, Screen, Subtitle, Title } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
 import { api } from "@/api/client";
 import { SignalingClient } from "@/net/signaling";
@@ -229,13 +229,13 @@ export default function RoomScreen() {
       <Card>
         <Text style={styles.label}>Na sala ({guestPeers.length + 1})</Text>
         <View style={styles.peerRow}>
+          <Avatar name={room.hostName} size={36} />
           <Text style={styles.peer}>{room.hostName}</Text>
-          <View style={styles.hostBadge}>
-            <Text style={styles.hostBadgeText}>HOST</Text>
-          </View>
+          <Badge label="HOST" color={colors.primaryDark} />
         </View>
         {guestPeers.map((p) => (
           <View key={p.peerId} style={styles.peerRow}>
+            <Avatar name={p.name} size={36} />
             <Text style={styles.peer}>{p.name}</Text>
             {isHost && (
               <Pressable onPress={() => confirmKick(p)} style={styles.kickBtn}>
@@ -254,10 +254,13 @@ export default function RoomScreen() {
             <Text style={styles.hint}>Sem mensagens ainda. Diga um oi!</Text>
           ) : (
             messages.map((m, i) => (
-              <Text key={`${m.ts}-${i}`} style={styles.chatMsg}>
-                <Text style={styles.chatFrom}>{m.from}: </Text>
-                {m.text}
-              </Text>
+              <View key={`${m.ts}-${i}`} style={styles.chatRow}>
+                <Avatar name={m.from} size={26} />
+                <View style={styles.chatBubble}>
+                  <Text style={styles.chatFrom}>{m.from}</Text>
+                  <Text style={styles.chatMsg}>{m.text}</Text>
+                </View>
+              </View>
             ))
           )}
         </View>
@@ -288,15 +291,8 @@ const styles = StyleSheet.create({
   step: { color: colors.text, fontSize: 15, lineHeight: 22 },
   hint: { color: colors.textMuted, fontSize: 13, marginTop: spacing.xs, lineHeight: 18 },
   mono: { color: colors.accent, fontWeight: "800" },
-  peer: { color: colors.text, fontSize: 16 },
-  peerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  hostBadge: {
-    backgroundColor: colors.primaryDark,
-    borderRadius: radius.sm,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-  },
-  hostBadgeText: { color: colors.text, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
+  peer: { color: colors.text, fontSize: 16, flex: 1 },
+  peerRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   kickBtn: {
     backgroundColor: colors.danger,
     borderRadius: radius.sm,
@@ -304,9 +300,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   kickText: { color: colors.text, fontSize: 13, fontWeight: "700" },
-  chatBox: { gap: 4, maxHeight: 220 },
+  chatBox: { gap: spacing.sm, maxHeight: 260 },
+  chatRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  chatBubble: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    gap: 1,
+  },
   chatMsg: { color: colors.text, fontSize: 15, lineHeight: 20 },
-  chatFrom: { color: colors.accent, fontWeight: "700" },
+  chatFrom: { color: colors.accent, fontWeight: "700", fontSize: 12 },
   chatInputRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm },
   input: {
     backgroundColor: colors.bg,
