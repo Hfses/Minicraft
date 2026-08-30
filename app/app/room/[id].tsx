@@ -6,7 +6,7 @@ import type { PeerInfo, RelayEndpoint, RoomSummary, SignalServerMessage } from "
 import { Button, Card, Screen, Subtitle, Title } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
 import { api } from "@/api/client";
-import { SignalingClient } from "@/net/signaling";
+import { SignalingClient, type ConnectionState } from "@/net/signaling";
 import { UdpProxy } from "@/net/udpProxy";
 import { clearActiveSession, getActiveSession } from "@/state/active";
 
@@ -27,6 +27,8 @@ export default function RoomScreen() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [chatText, setChatText] = useState("");
   const [connState, setConnState] = useState<"idle" | "linking" | "ready">("idle");
+  const [signalState, setSignalState] = useState<ConnectionState>("connecting");
+  const [proxyError, setProxyError] = useState<string | null>(null);
 
   const signalingRef = useRef<SignalingClient | null>(null);
   const proxiesRef = useRef<UdpProxy[]>([]);
@@ -37,7 +39,12 @@ export default function RoomScreen() {
     if (session.role === "guest" && session.relay) {
       const proxy = new UdpProxy(session.relay, { mode: "guest", localPort: session.localPort });
       proxy.onStatus = (s) => {
-        if (s.running) setConnState("ready");
+        if (s.running) {
+          setConnState("ready");
+          setProxyError(null);
+        } else if (s.lastError) {
+          setProxyError(s.lastError);
+        }
       };
       proxy.start();
       proxiesRef.current.push(proxy);
@@ -46,6 +53,7 @@ export default function RoomScreen() {
 
     const client = new SignalingClient(id, session.token, session.role);
     signalingRef.current = client;
+    client.onStateChange(setSignalState);
     client.on((msg: SignalServerMessage) => {
       switch (msg.type) {
         case "welcome":
@@ -92,7 +100,12 @@ export default function RoomScreen() {
   const startHostProxy = (relay: RelayEndpoint) => {
     const proxy = new UdpProxy(relay, { mode: "host" });
     proxy.onStatus = (s) => {
-      if (s.running) setConnState("ready");
+      if (s.running) {
+        setConnState("ready");
+        setProxyError(null);
+      } else if (s.lastError) {
+        setProxyError(s.lastError);
+      }
     };
     proxy.start();
     proxiesRef.current.push(proxy);
@@ -180,6 +193,22 @@ export default function RoomScreen() {
         <Text style={[styles.status, connState === "ready" && { color: colors.primary }]}>
           {connState === "ready" ? "● Ponte ativa" : connState === "linking" ? "● Conectando…" : "○ Aguardando"}
         </Text>
+        {signalState === "reconnecting" && (
+          <Text style={styles.warn}>Reconectando ao servidor de sinalização…</Text>
+        )}
+        {signalState === "offline" && (
+          <>
+            <Text style={styles.error}>
+              Não foi possível manter a conexão com o servidor. Verifique sua internet.
+            </Text>
+            <Button
+              label="Tentar novamente"
+              variant="secondary"
+              onPress={() => signalingRef.current?.retry()}
+            />
+          </>
+        )}
+        {proxyError && <Text style={styles.error}>Ponte de conexão: {proxyError}</Text>}
         <Button label="Abrir no Minecraft" onPress={openMinecraft} />
         {!isHost && (
           <Text style={styles.hint}>
@@ -260,6 +289,8 @@ const styles = StyleSheet.create({
   label: { color: colors.textMuted, fontSize: 13 },
   code: { color: colors.text, fontSize: 40, fontWeight: "900", letterSpacing: 6, textAlign: "center" },
   status: { color: colors.textMuted, fontSize: 16, fontWeight: "700" },
+  warn: { color: colors.accent, fontSize: 13 },
+  error: { color: colors.danger, fontSize: 13 },
   step: { color: colors.text, fontSize: 15, lineHeight: 22 },
   hint: { color: colors.textMuted, fontSize: 13, marginTop: spacing.xs, lineHeight: 18 },
   mono: { color: colors.accent, fontWeight: "800" },
