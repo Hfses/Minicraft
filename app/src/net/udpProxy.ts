@@ -72,6 +72,45 @@ export class UdpProxy {
     });
   }
 
+  /**
+   * Bind the local UDP socket, rejecting if an "error" event fires before the
+   * bind callback does (e.g. EADDRINUSE). Without this, a failed bind left
+   * `start()` awaiting a callback that never comes, hanging the whole proxy
+   * (and the room screen's "connecting" state) forever with no feedback.
+   */
+  private bindLocalSocket(socket: UdpSocket, cfg: ProxyMode): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const onError = (err: Error) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      };
+      socket.on("error", onError);
+      // Keep the long-lived error handler used for post-bind failures too.
+      socket.on("error", (err) => {
+        this.status.lastError = err.message;
+        this.emit();
+      });
+
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
+      if (cfg.mode === "guest") {
+        socket.bind(cfg.localPort, "127.0.0.1", done);
+      } else {
+        this.lastGameAddr = {
+          address: cfg.gameHost ?? "127.0.0.1",
+          port: cfg.gamePort ?? BEDROCK_DEFAULT_PORT,
+        };
+        socket.bind(0, "0.0.0.0", done);
+      }
+    });
+  }
+
   private tunnelToRelay(msg: Uint8Array): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       // Copy into a standalone ArrayBuffer so RN sends exactly these bytes.
@@ -84,15 +123,16 @@ export class UdpProxy {
   }
 
   async start(): Promise<void> {
+    // Guard against double-start (e.g. an effect re-running) leaving a stale
+    // socket bound to the same port, which would otherwise make the new bind
+    // fail silently.
+    if (this.localSocket || this.ws) this.stop();
+
     const cfg = this.config;
 
     // Local UDP side.
     const localSocket = dgram.createSocket({ type: "udp4" }) as unknown as UdpSocket;
     this.localSocket = localSocket;
-    localSocket.on("error", (err) => {
-      this.status.lastError = err.message;
-      this.emit();
-    });
     localSocket.on("message", (msg, rinfo) => {
       if (cfg.mode === "guest") {
         // Remember where the game is so replies can go back to it.
@@ -101,14 +141,23 @@ export class UdpProxy {
       this.tunnelToRelay(new Uint8Array(msg));
     });
 
-    if (cfg.mode === "guest") {
-      await new Promise<void>((resolve) => localSocket.bind(cfg.localPort, "127.0.0.1", () => resolve()));
-    } else {
-      this.lastGameAddr = {
-        address: cfg.gameHost ?? "127.0.0.1",
-        port: cfg.gamePort ?? BEDROCK_DEFAULT_PORT,
-      };
-      await new Promise<void>((resolve) => localSocket.bind(0, "0.0.0.0", () => resolve()));
+    try {
+      await this.bindLocalSocket(localSocket, cfg);
+    } catch (err) {
+      // Bind failed (e.g. port already in use) — surface it instead of
+      // hanging forever waiting for a bind callback that will never fire,
+      // and don't proceed to open the relay socket on top of a dead proxy.
+      this.status.lastError =
+        err instanceof Error ? err.message : "Não foi possível abrir a conexão local.";
+      this.status.running = false;
+      this.emit();
+      try {
+        localSocket.close();
+      } catch {
+        // ignore
+      }
+      if (this.localSocket === localSocket) this.localSocket = null;
+      return;
     }
 
     // Relay WebSocket side.
