@@ -20,6 +20,7 @@ export default function RootLayout() {
         <Stack.Screen name="rooms" options={{ title: "Encontrar salas" }} />
         <Stack.Screen name="room/[id]" options={{ title: "Sala" }} />
         <Stack.Screen name="friends" options={{ title: "Amigos" }} />
+        <Stack.Screen name="profile" options={{ title: "Perfil" }} />
         <Stack.Screen name="guide" options={{ title: "Como jogar junto" }} />
       </Stack>
     </SafeAreaProvider>

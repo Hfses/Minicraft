@@ -23,6 +23,10 @@ export default function CreateRoom() {
   }, []);
 
   const onCreate = async () => {
+    const cleanRoomName = roomName.trim().slice(0, 32);
+    const cleanHostName = hostName.trim().slice(0, 32);
+    if (cleanRoomName.length < 2) { setError("Dê um nome com pelo menos 2 caracteres para a sala."); return; }
+    if (cleanHostName.length < 2) { setError("Informe seu nome para os outros jogadores."); return; }
     setLoading(true);
     setError(null);
     try {
@@ -31,8 +35,8 @@ export default function CreateRoom() {
       await wakeBackend();
       setStatusMsg("Criando sala…");
       const res = await api.createRoom({
-        name: roomName,
-        hostName,
+        name: cleanRoomName,
+        hostName: cleanHostName,
         visibility: isPublic ? "public" : "private",
       });
       setActiveSession({

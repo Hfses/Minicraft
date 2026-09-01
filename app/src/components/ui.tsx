@@ -15,11 +15,24 @@ import { colors, radius, spacing } from "@/theme";
 export function Screen({ children }: { children: React.ReactNode }) {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {children}
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>{children}</View>
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+export function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {action && <Pressable accessibilityRole="button" onPress={onAction}><Text style={styles.action}>{action}</Text></Pressable>}
+    </View>
+  );
+}
+
+export function Badge({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "success" | "warning" }) {
+  return <View style={[styles.badge, tone === "success" && styles.badgeSuccess, tone === "warning" && styles.badgeWarning]}><Text style={styles.badgeText}>{children}</Text></View>;
 }
 
 export function Title({ children }: { children: React.ReactNode }) {
@@ -77,8 +90,16 @@ export function Button({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { padding: spacing.md, gap: spacing.md },
-  title: { color: colors.text, fontSize: 26, fontWeight: "800" },
-  subtitle: { color: colors.textMuted, fontSize: 15, lineHeight: 21 },
+  content: { width: "100%", maxWidth: 680, alignSelf: "center", gap: spacing.md },
+  title: { color: colors.text, fontSize: 30, fontWeight: "800", letterSpacing: -0.5 },
+  subtitle: { color: colors.textMuted, fontSize: 15, lineHeight: 22 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.sm },
+  sectionTitle: { color: colors.text, fontSize: 18, fontWeight: "800" },
+  action: { color: colors.accent, fontSize: 14, fontWeight: "700" },
+  badge: { alignSelf: "flex-start", backgroundColor: colors.cardBorder, borderRadius: radius.lg, paddingHorizontal: spacing.sm, paddingVertical: 5 },
+  badgeSuccess: { backgroundColor: colors.primaryDark },
+  badgeWarning: { backgroundColor: colors.warning },
+  badgeText: { color: colors.text, fontSize: 12, fontWeight: "800" },
   card: {
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
